@@ -26,17 +26,26 @@ Fork this repo, implement `decide()` in `agent.py`, then send us the repo — **
 
 > **Secrets:** never commit API keys. You do not need an LLM, brokerage login, or real-money account to enter. If you use an LLM, use endpoint mode or a capped throwaway key.
 
-## Submitted agent: Forward-Return Rotation Hybrid
+## Submitted agent: Trend-Breadth Momentum
 
-`agent.py` is a no-network, no-LLM strategy built for the live forward-return ranking (Round 2: July 7 – October 31, 2026):
+`agent.py` is a stateless, no-network, no-LLM strategy built for a late Round 2 entry (~15 scored sessions):
 
-- **Risk regime:** risk-on only when SPY and QQQ are above their 50-day SMAs and QQQ 20-day volatility is below 35%.
-- **Risk-off book:** XLP / XLU / XLV / XLE with cash left over; no leverage.
-- **Risk-on book:** ranks SPY, QQQ, sector ETFs, SMH, and mega-cap tech by 60-day momentum, 20-day momentum, 50-day trend gap, and volatility.
-- **Tactical overlay:** adds small QLD / SSO exposure only in calm QQQ uptrends; never uses TQQQ or SOXL by default.
-- **Caps:** per-ticker targets stay below 24%, drift rebalance starts above 27%, and beta-adjusted gross is scaled below 1.35x.
+- **Regime:** OFF (all cash) on a QQQ crash brake, SPY and QQQ both below their 50-day SMAs, or breadth below 40%, and it stays OFF for 5 sessions after any such signal. STRONG when SPY and QQQ are above their SMA50s, QQQ's SMA20 is above its SMA50, breadth is at least 55% and QQQ 20-day vol is under 25%. NEUTRAL otherwise.
+- **Leaders:** the 36 tradeable 1x names above their SMA50 with a positive 63-day return, ranked by 0.6 × 63-day + 0.4 × 21-day return; top 5 at equal weight (80% of equity), with held names kept while they stay inside the top 7.
+- **Sleeve:** 20% QLD only in STRONG. Beta-adjusted gross is about 1.2x; no TQQQ/SOXL.
+- **Caps:** per-name targets at most 24%, trimmed if a name drifts past 27%; trades only when a weight is more than 3 points off target.
 
 Run `python strategy_selftest.py` for strategy-specific cap/regime checks.
+
+### Research
+
+`research/` replays the live board's engine (`research/engine.py` matches `live_runner.run_bot` to the cent) on cached yfinance bars for the 42 names the board actually scores:
+
+- `python research/data.py` refreshes the bar cache in `data_cache/`.
+- `python research/validate.py` checks engine parity and replays the benchmark's Round 2 curve.
+- `python research/sweep.py agent.py` scores an agent over historical 15-session windows against the benchmark and a simulated field.
+
+The benchmark agent (`private_agents/arnav_agent.py`) is not part of this repo: get it from the public Round 1 winner archive, for private study only.
 
 ---
 
