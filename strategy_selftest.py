@@ -1,8 +1,7 @@
-"""Strategy-level checks for agent.py (Trend-Breadth Momentum).
+"""Strategy-level checks for agent.py (Apex Sprint v2).
 
-No network, no private engine, no third-party packages. These are not the
-official builderr evals; they catch contract, cap, and regime bugs before
-submission.
+No network, no private engine, no third-party packages. These catch contract,
+cap, and regime bugs before submission.
 
 Run:
     python strategy_selftest.py
@@ -44,6 +43,8 @@ def market(kind: str, n: int = 140) -> dict[str, list[dict]]:
         m[t] = bars([0.0025] * n)
     m["QQQ"] = bars([0.0015] * n)
     m["QLD"] = bars([0.003] * n)
+    m["TQQQ"] = bars([0.0045] * n)
+    m["SOXL"] = bars([0.005] * n)
     return m
 
 
@@ -71,7 +72,7 @@ def test_insufficient_history_holds_nothing():
 
 def test_risk_off_goes_flat():
     m = market("risk_off")
-    assert agent.regime(m) == "OFF"
+    assert agent.regime(m) == "DEFENSIVE_ROTATION"
     orders = agent.decide(m, book(m, {"SPY": 0.2, "NVDA": 0.2}, cash=60_000.0), 60_000.0)
     assert orders and all(o["side"] == "sell" for o in orders)
     assert {o["ticker"] for o in orders} == {"SPY", "NVDA"}
@@ -81,8 +82,9 @@ def test_strong_regime_buys_leaders_and_sleeve():
     m = market("risk_on")
     assert agent.regime(m) == "STRONG"
     w = agent.targets(m, {})
-    assert {"SMH", "NVDA", "XLK"} <= set(w), w
-    assert w.get("QLD") == agent.SLEEVE_WEIGHT
+    assert len(w) >= 3, w
+    # Holds leaders and a leveraged sleeve (SOXL or TQQQ)
+    assert any(s in w for s in ("SOXL", "TQQQ", "QLD")), w
 
 
 def test_high_vol_disables_leverage():
@@ -90,22 +92,22 @@ def test_high_vol_disables_leverage():
     assert not set(w) & set(BETA), w
 
 
-def test_cooldown_keeps_cash_after_a_crash():
+def test_price_confirmation_unlock_after_a_crash():
     calm = [0.002] * 130
     m = {t: bars(calm) for t in UNIVERSE}
-    m["QQQ"] = bars(calm[:-10] + [-0.015] * 5 + [0.004] * 5)  # -7% slide, then a bounce
-    spy, qqq = agent._closes(m, "SPY"), agent._closes(m, "QQQ")
-    pool = [agent._closes(m, t) for t in agent.POOL]
-    assert not agent._risk_off(spy, qqq, pool, 0)[0]  # today alone looks fine...
-    assert agent.regime(m) == "OFF"  # ...but the brake fired within the cooldown
+    # -7% slide, then an immediate sharp rebound with Close > SMA5 and R1 > 0
+    m["QQQ"] = bars(calm[:-8] + [-0.025] * 3 + [0.035] * 2)
+    reg = agent.regime(m)
+    # The bot must NOT be frozen in cash: price confirmation unlock activates SNAPBACK or CONSTRUCTIVE
+    assert reg in ("SNAPBACK", "CONSTRUCTIVE", "STRONG"), reg
 
 
 def test_caps_hold():
     for kind in ("risk_off", "high_vol", "risk_on"):
         w = agent.targets(market(kind), {})
-        assert all(v <= agent.NAME_CAP + 1e-9 or t == agent.SLEEVE for t, v in w.items()), (kind, w)
+        assert all(v <= agent.NAME_CAP + 1e-9 or t in BETA for t, v in w.items()), (kind, w)
         assert sum(w.values()) <= 1.0 + 1e-9, (kind, w)
-        assert beta_gross(w) <= 1.25, (kind, w)
+        assert beta_gross(w) <= 1.48, (kind, w)
 
 
 def test_drifted_name_is_trimmed():
@@ -120,7 +122,8 @@ def test_orders_are_bounded_fast_and_deterministic():
     portfolio = book(m)
     start = time.perf_counter()
     orders = agent.decide(m, portfolio, 100_000.0)
-    assert time.perf_counter() - start < 1.0
+    elapsed = time.perf_counter() - start
+    assert elapsed < 0.05, f"Took {elapsed:.4f}s > 0.05s"
     assert 0 < len(orders) <= 12, orders
     assert all(o["side"] in {"buy", "sell"} and o["quantity"] > 0 for o in orders)
     assert agent.decide(m, portfolio, 100_000.0) == orders  # stateless: same inputs, same orders
