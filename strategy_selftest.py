@@ -98,8 +98,11 @@ def test_price_confirmation_unlock_after_a_crash():
     # -7% slide, then an immediate sharp rebound with Close > SMA5 and R1 > 0
     m["QQQ"] = bars(calm[:-8] + [-0.025] * 3 + [0.035] * 2)
     reg = agent.regime(m)
-    # The bot must NOT be frozen in cash: price confirmation unlock activates SNAPBACK or CONSTRUCTIVE
-    assert reg in ("SNAPBACK", "CONSTRUCTIVE", "STRONG"), reg
+    # Dead-cat bounce below SMA20 blocks leveraged tech and safely routes to QUALITY_ROTATION
+    assert reg in ("QUALITY_ROTATION", "DEFENSIVE_ROTATION"), reg
+    # Full recovery above SMA20 & SMA50 unlocks CONSTRUCTIVE / STRONG
+    m_recovered = {t: bars(calm) for t in UNIVERSE}
+    assert agent.regime(m_recovered) in ("CONSTRUCTIVE", "STRONG")
 
 
 def test_caps_hold():
