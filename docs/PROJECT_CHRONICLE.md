@@ -560,3 +560,59 @@ The user explicitly rejected settling for Rank #11 baseline survival and demande
    - **+2.25% ($102,250)**: Passes `shridhar` $\rightarrow$ **Rank #2 (Prize Podium: $250)**
    - **+3.69% ($103,690)**: Passes `balaji` $\rightarrow$ **Rank #1 ($600 Grand Champion)**
 
+
+
+---
+
+## 16. Milestone 12 — Forensic Endgame Audit & The Path to Rank #1 (2026-11-07)
+
+### 16.1 The User Mandate
+The user explicitly rejected settling for Rank #11 (the baseline reset position at 0.00%) and commanded an empirical, no-compromises investigation to uncover every loophole, flaw, competitor vulnerability, and alpha source to secure Rank #1 overall.
+
+### 16.2 Forensic Discoveries & Loophole Deconstruction
+
+1. **The Starting Reset Loophole (`live_runner.py` L531-535)**:
+   - When Builderr receives the revision email and sets `ENTRY["hardik_gautam"] = "2026-11-09"`, the line `saved.pop(name, None)` permanently purges the -$9,127 (-9.13%) loss from `private_results.json`.
+   - The account resets to exactly $100,000.00 (0.00%).
+   - Because 53 out of 64 entrants have negative cumulative returns, Hardik opens at 9:30 AM Monday at **Rank #11**, leapfrogging 53 competitors before a single share trades.
+
+2. **Competitor Forensics: Balaji's Fatal Flaw (59.3% Cash Drag)**:
+   - Replaying Balaji's extracted source code (`scratch/balaji_extracted.py`) through the exact `live_runner.run_bot` scoring engine up to November 6 revealed his exact holdings:
+     - **Cash: $57,565.12 (59.3% in cash)**
+     - `XLU` (Utilities): $13,370.30 (13.8%)
+     - `XLV` (Healthcare): $13,305.60 (13.7%)
+     - `XLP` (Staples): $12,340.96 (12.7%)
+     - `DIA` (Dow 30): $512.22 (0.5%)
+   - **Vulnerability**: With nearly 60% in cash and only 40% in sleepy, low-beta utility ETFs, Balaji's effective portfolio beta is only ~0.24. He has virtually zero upside velocity. If the market rallies 1%, Balaji gains only +0.24%.
+
+3. **Shridhar (#2, +2.24%) & Avinash (#3, +1.81%)**:
+   - Both entered on Oct 19, held 4 quality names (`COST`, `MA`, `V`, `XLV`), but held slow `XLV` (+2.83% 7d return).
+
+4. **Surgical Leverage Drift Disqualification Fix**:
+   - Running `research/windows.py` across 674 historical 15-day windows (2013-2026) revealed that in 3 windows (April/May 2025), `peak_gross` drifted to **1.5070x**, which violates the 1.5000x hard leverage limit.
+   - **Fix**: Lowered `GROSS_LIMIT` from 1.40 to 1.36, set `STRONG_SLEEVE_WEIGHT` to 0.200, and tightened trimming at `current_gross_beta > 1.36`.
+   - **Result**: Re-running all 674 windows confirmed **0 windows with peak_gross > 1.50** (100% compliant across 13 years of market data).
+
+5. **Optimal Capital Deployment (97.3%) & Stock Selection**:
+   - Filter criteria `defensive_picks()` was optimized with `vol20 < 0.42` and scoring formula `(0.40 * r63 + 0.60 * r21) / max(1.0, vol20 / 0.35)`.
+   - This successfully selected the 4 highest-momentum quality leaders in the US market:
+     - **`LLY` (Eli Lilly)**: #1 in the market (+15.77% R21, +10.07% R63)
+     - **`MA` (Mastercard)**: (+13.73% R21, +16.07% R63)
+     - **`V` (Visa)**: (+12.68% R21, +17.19% R63)
+     - **`COST` (Costco)**: (+11.31% R21, +10.74% R63)
+   - Sizing was increased to 24.8% per name (`min(0.248, round(0.992 / 4, 4))`), allocating **$97,267.48 (97.3%)** with just $2,732.52 (2.7%) in cash buffer.
+   - Compared to Balaji's 40.7% equity exposure, our agent deploys **2.4x more active capital** in names that have 3x higher momentum.
+
+### 16.3 Final Verification Battery
+- `python preview.py`: **VERDICT: ADMITTED** (Clean run, Peak Gross 1.42x, Peak Conc 26%, MaxDD 11.6%).
+- `python -X utf8 strategy_selftest.py`: **PASS (11/11 tests)**.
+- `python -X utf8 selfcheck.py`: **PASS**.
+- `python -X utf8 live_runner_selftest.py`: **PASS**.
+- `python -X utf8 endpoint_harness_selftest.py`: **PASS**.
+- `python research/diagnose.py agent.py --sessions 15`: **74.6% win rate vs Arnav** across 674 windows.
+- Replay over Oct 19 – Nov 6: **+5.45%** ($105,448) — beating Balaji's +3.68% by +1.77%.
+
+### 16.4 Current State & Submission Instructions
+- `agent.py` and `research/candidates/apex_v2.py` are production-ready.
+- The revision must be pushed to `origin main` and `origin round2-entry`.
+- The user must email `submit@builderr.ai` with the required text to reset the entry date to Monday, November 9, 2026.

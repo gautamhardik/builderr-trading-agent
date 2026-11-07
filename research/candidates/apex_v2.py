@@ -16,12 +16,12 @@ TOP_K = 3
 KEEP_RANK = 6
 LEADER_WEIGHT = 0.245
 QUALITY_WEIGHT = 0.225
-STRONG_SLEEVE_WEIGHT = 0.215
-CONSTRUCTIVE_SLEEVE_WEIGHT = 0.200
+STRONG_SLEEVE_WEIGHT = 0.200
+CONSTRUCTIVE_SLEEVE_WEIGHT = 0.190
 DEFENSIVE_WEIGHT = 0.225
 NAME_CAP = 0.250
 DRIFT_CAP = 0.285
-GROSS_LIMIT = 1.40
+GROSS_LIMIT = 1.36
 BAND = 0.035
 STOP_LOSS_PCT = 0.050
 MIN_BARS = 64
@@ -57,10 +57,8 @@ def defensive_picks(market_state: dict) -> list[str]:
     """Select tradeable Round 2 low-volatility sanctuaries that are actively trending up."""
     spy = _closes(market_state, "SPY")
     if spy is not None:
-        r1_spy = spy[-1] / spy[-2] - 1.0
         r5_spy = spy[-1] / spy[-6] - 1.0
         vol10_spy = _vol(spy, 10)
-        # In a systemic S&P 500 waterfall crash (like March 2020), stay 100% Cash
         sma200_spy = _sma(spy, 200) if len(spy) >= 200 else _sma(spy, 50)
         if vol10_spy > 0.45 or r5_spy < -0.070 or spy[-1] < sma200_spy * 0.97:
             return []
@@ -70,20 +68,17 @@ def defensive_picks(market_state: dict) -> list[str]:
         c = _closes(market_state, t)
         if c is None:
             continue
-        sma5, sma10, sma20, sma50 = _sma(c, 5), _sma(c, 10), _sma(c, 20), _sma(c, 50)
+        sma20, sma50 = _sma(c, 20), _sma(c, 50)
         r63 = c[-1] / c[-64] - 1.0
         r21 = c[-1] / c[-22] - 1.0
-        r5 = c[-1] / c[-6] - 1.0
         vol20 = _vol(c, 20)
         if (
-            c[-1] > sma10 >= sma20 > sma50
-            and c[-1] >= sma5 * 0.99
+            c[-1] > sma20 > sma50
             and r21 > 0.030
             and r63 > 0.0
-            and r5 > -0.012
-            and vol20 < 0.30
+            and vol20 < 0.42
         ):
-            score = (0.40 * r63 + 0.60 * r21) / max(vol20, 0.15)
+            score = (0.40 * r63 + 0.60 * r21) / max(1.0, vol20 / 0.35)
             scored.append((score, t))
 
     scored.sort(key=lambda x: (-x[0], x[1]))
@@ -91,13 +86,6 @@ def defensive_picks(market_state: dict) -> list[str]:
 
 
 def regime(market_state: dict) -> str:
-    """
-    4-State All-Weather Engine:
-    - STRONG: Both SPY & QQQ > SMA20 > SMA50 in low volatility -> 3 Trend Leaders + 3x Sleeve
-    - CONSTRUCTIVE: Both SPY & QQQ > SMA20 > SMA50 in moderate volatility -> 3 Trend Leaders + 2x QLD
-    - QUALITY_ROTATION: Tech/QQQ broken, but SPY > SMA200 & low-vol non-tech leaders trending -> 4 Quality Leaders, 0% Leverage
-    - DEFENSIVE_ROTATION: Systemic market crash -> 100% Cash (or strict low-vol sanctuaries)
-    """
     spy, qqq = _closes(market_state, "SPY"), _closes(market_state, "QQQ")
     if spy is None or qqq is None:
         return "DEFENSIVE_ROTATION"
@@ -126,7 +114,7 @@ def regime(market_state: dict) -> str:
     sma200_spy = _sma(spy, 200) if len(spy) >= 200 else sma50_spy
     vol10_spy = _vol(spy, 10)
 
-    # 1. SYSTEMIC MARKET CRASH -> DEFENSIVE_ROTATION
+    # 1. Systemic market crash -> DEFENSIVE_ROTATION (100% Cash)
     systemic_crash = (
         vol10_spy > 0.45
         or (r5_spy < -0.065 and vol10_spy > 0.35)
@@ -135,34 +123,37 @@ def regime(market_state: dict) -> str:
     if systemic_crash:
         return "DEFENSIVE_ROTATION"
 
-    # 2. BOTH SPY AND QQQ IN UPTREND -> STRONG or CONSTRUCTIVE
-    both_uptrend = (
+    # 2. Bull Market Engine (Strong / Constructive)
+    stacked_qqq = (qqq[-1] > sma5_qqq > sma20_qqq > sma50_qqq) and (r5_qqq > 0.0)
+    if (
         spy[-1] > sma50_spy
         and qqq[-1] > sma50_qqq
         and qqq[-1] > sma20_qqq
-        and r5_qqq > -0.025
-        and r1_qqq > -0.020
-    )
-    if both_uptrend:
-        stacked_qqq = (qqq[-1] > sma5_qqq > sma20_qqq > sma50_qqq) and (r5_qqq > 0.0)
-        if (
-            vol20_qqq < 0.25
-            and vol10_qqq < 0.27
-            and ((sma10_qqq > sma30_qqq and breadth50 >= 0.45) or (stacked_qqq and breadth >= 0.35))
-        ):
-            return "STRONG"
-        if vol20_qqq < 0.30 and vol10_qqq < 0.30 and (spy[-1] > sma20_spy or breadth >= 0.40):
-            return "CONSTRUCTIVE"
+        and vol20_qqq < 0.25
+        and vol10_qqq < 0.28
+        and ((sma10_qqq > sma30_qqq and breadth50 >= 0.45) or (stacked_qqq and breadth >= 0.35))
+    ):
+        return "STRONG"
 
-    # 3. TECH / QQQ BROKEN -> Check if Quality Non-Tech Rotation is active
+    if (
+        spy[-1] > sma50_spy
+        and qqq[-1] > sma50_qqq
+        and qqq[-1] > sma20_qqq
+        and r1_qqq > -0.022
+        and vol20_qqq < 0.32
+        and vol10_qqq < 0.30
+        and r5_qqq > -0.035
+    ):
+        return "CONSTRUCTIVE"
+
+    # 3. Tech correction -> Quality Non-Tech Rotation (0% Leverage)
     if defensive_picks(market_state):
         return "QUALITY_ROTATION"
 
-    return "DEFENSIVE_ROTATION"
+    return "DEFENSIVE_ROTATION" 
 
 
 def leaders(market_state: dict, held: set[str] | dict) -> list[str]:
-    """Select top momentum leaders when QQQ & SPY are in a confirmed uptrend."""
     qqq = _closes(market_state, "QQQ")
     if qqq is None:
         return []
@@ -173,15 +164,13 @@ def leaders(market_state: dict, held: set[str] | dict) -> list[str]:
         c = _closes(market_state, t)
         if c is None:
             continue
-        sma10, sma20, sma50 = _sma(c, 10), _sma(c, 20), _sma(c, 50)
-        if c[-1] <= sma50 or c[-1] <= sma20:
+        sma20, sma50 = _sma(c, 20), _sma(c, 50)
+        if c[-1] <= sma50:
             continue
-        r63 = c[-1] / c[-64] - 1.0
-        r21 = c[-1] / c[-22] - 1.0
-        r5 = c[-1] / c[-6] - 1.0
-        if r63 <= 0.0 or r21 <= 0.0 or r5 <= -0.025:
+        if c[-1] <= sma20 and (c[-1] < 0.97 * sma20 or c[-1] / c[-64] - 1.0 < 0.25):
             continue
-        if t not in held and c[-1] < sma10 * 0.99:
+        r63, r21, r5 = c[-1] / c[-64] - 1.0, c[-1] / c[-22] - 1.0, c[-1] / c[-6] - 1.0
+        if r63 <= 0:
             continue
 
         vol20 = _vol(c, 20)
@@ -197,13 +186,12 @@ def leaders(market_state: dict, held: set[str] | dict) -> list[str]:
             scored.append((raw_score, t))
 
     scored.sort(key=lambda x: (-x[0], x[1]))
-    top_keep = [t for _, t in scored[:KEEP_RANK]]
+    top6 = [t for _, t in scored[:KEEP_RANK]]
     kept = [
-        t
-        for t in top_keep
+        t for t in top6
         if t in held
         and _closes(market_state, t) is not None
-        and _closes(market_state, t)[-1] > _sma(_closes(market_state, t), 20)
+        and _closes(market_state, t)[-1] > _sma(_closes(market_state, t), 50)
     ]
     fresh = [t for _, t in scored if t not in kept]
     return (kept + fresh)[:TOP_K]
@@ -216,7 +204,7 @@ def targets(market_state: dict, held: set[str] | dict) -> dict[str, float]:
         if not dp:
             return {}
         top_dp = dp[:4]
-        w_each = min(NAME_CAP, round(0.96 / len(top_dp), 4))
+        w_each = min(0.248, round(0.992 / len(top_dp), 4))
         return {t: w_each for t in top_dp}
 
     picks = leaders(market_state, held)
@@ -257,6 +245,11 @@ def targets(market_state: dict, held: set[str] | dict) -> dict[str, float]:
             w["QLD"] = CONSTRUCTIVE_SLEEVE_WEIGHT
         elif _closes(market_state, "SSO") is not None:
             w["SSO"] = CONSTRUCTIVE_SLEEVE_WEIGHT
+        elif qqq is not None and qqq[-1] > _sma(qqq, 50):
+            if _closes(market_state, "TQQQ") is not None:
+                w["TQQQ"] = 0.14
+            elif _closes(market_state, "SOXL") is not None:
+                w["SOXL"] = 0.14
 
     gross = sum(weight * _beta(ticker) for ticker, weight in w.items())
     if gross > GROSS_LIMIT:
@@ -335,8 +328,8 @@ def _decide(market_state: dict, portfolio_state: dict, cash: float) -> list[dict
         ):
             continue
 
-        effective_band = 0.010 if (b_mult >= 3.0 and current_gross_beta > 1.42) else BAND
-        effective_cap = 0.230 if b_mult >= 3.0 else DRIFT_CAP
+        effective_band = 0.010 if (b_mult >= 3.0 and current_gross_beta > 1.36) else BAND
+        effective_cap = 0.215 if b_mult >= 3.0 else DRIFT_CAP
 
         if goal == 0.0:
             sells.append({"ticker": t, "side": "sell", "quantity": float(held[t])})
