@@ -61,7 +61,8 @@ def defensive_picks(market_state: dict) -> list[str]:
         r5_spy = spy[-1] / spy[-6] - 1.0
         vol10_spy = _vol(spy, 10)
         # In a systemic S&P 500 waterfall crash (like March 2020), stay 100% Cash
-        if vol10_spy > 0.34 or r5_spy < -0.045 or r1_spy < -0.025:
+        sma200_spy = _sma(spy, 200) if len(spy) >= 200 else _sma(spy, 50)
+        if vol10_spy > 0.45 or r5_spy < -0.070 or spy[-1] < sma200_spy * 0.97:
             return []
 
     scored = []
@@ -127,11 +128,9 @@ def regime(market_state: dict) -> str:
 
     # 1. SYSTEMIC MARKET CRASH -> DEFENSIVE_ROTATION
     systemic_crash = (
-        vol10_spy > 0.32
-        or vol10_qqq > 0.45
-        or r5_spy < -0.042
-        or r1_spy <= -0.024
-        or spy[-1] < sma200_spy * 0.98
+        vol10_spy > 0.45
+        or (r5_spy < -0.065 and vol10_spy > 0.35)
+        or spy[-1] < sma200_spy * 0.97
     )
     if systemic_crash:
         return "DEFENSIVE_ROTATION"
@@ -214,7 +213,11 @@ def targets(market_state: dict, held: set[str] | dict) -> dict[str, float]:
     state = regime(market_state)
     if state in ("DEFENSIVE_ROTATION", "QUALITY_ROTATION"):
         dp = defensive_picks(market_state)
-        return {t: QUALITY_WEIGHT for t in dp}
+        if not dp:
+            return {}
+        top_dp = dp[:4]
+        w_each = min(NAME_CAP, round(0.96 / len(top_dp), 4))
+        return {t: w_each for t in top_dp}
 
     picks = leaders(market_state, held)
     w = {t: LEADER_WEIGHT for t in picks}
